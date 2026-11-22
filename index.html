@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>슈가쉴드 AI - 고등학생 맞춤형 혈당 스파이크 예측 및 저당 대체 간식 추천</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --safe: #16a34a;
+      --safe-bg: #dcfce7;
+      --warn: #d97706;
+      --warn-bg: #fef3c7;
+      --danger: #dc2626;
+      --danger-bg: #fee2e2;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 20px;
+    }
+    .container { max-width: 820px; margin: 0 auto; }
+    header {
+      text-align: center;
+      background: linear-gradient(135deg, #1e3a8a, #2563eb);
+      color: white;
+      padding: 32px 24px;
+      border-radius: 18px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 25px rgba(37, 99, 235, 0.18);
+    }
+    header h1 { font-size: 1.75rem; margin-bottom: 8px; }
+    header p { font-size: 0.95rem; opacity: 0.92; }
+    .badge-row { margin-top: 12px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+    .badge { background: rgba(255, 255, 255, 0.16); padding: 4px 12px; border-radius: 999px; font-size: 0.8rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+    }
+    .card h2 { font-size: 1.15rem; margin-bottom: 14px; color: #0f172a; }
+    .upload-area {
+      border: 2px dashed #93c5fd;
+      background: #eff6ff;
+      border-radius: 14px;
+      padding: 26px 20px;
+      text-align: center;
+      cursor: pointer;
+      display: block;
+      transition: all 0.2s ease;
+    }
+    .upload-area:hover { background: #dbeafe; border-color: var(--primary); }
+    .upload-area input { display: none; }
+    .upload-btn {
+      display: inline-block;
+      background: var(--primary);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-weight: 600;
+      margin-top: 10px;
+      font-size: 0.95rem;
+    }
+    #preview-wrapper { display: none; margin-top: 18px; text-align: center; }
+    #preview-image {
+      max-width: 260px;
+      max-height: 220px;
+      border-radius: 12px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+      object-fit: cover;
+    }
+    #status-text { margin-top: 12px; font-size: 0.92rem; color: #1e3a8a; font-weight: 600; }
+    .prob-bar-group { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .prob-item { display: flex; align-items: center; gap: 12px; font-size: 0.88rem; }
+    .prob-label { width: 95px; font-weight: 600; }
+    .prob-track { flex: 1; height: 10px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+    .prob-fill { height: 100%; background: var(--primary); border-radius: 999px; }
+    .prob-val { width: 52px; text-align: right; font-weight: 600; }
+
+    .search-panel {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+    .search-panel label {
+      display: block;
+      font-size: 0.88rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #0f172a;
+    }
+    .search-input-wrap { display: flex; gap: 8px; flex-wrap: wrap; }
+    .search-input-wrap input {
+      flex: 1;
+      min-width: 220px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #94a3b8;
+      font-size: 0.95rem;
+    }
+    .chip-list {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .chip {
+      background: white;
+      border: 1px solid #cbd5e1;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      color: #334155;
+    }
+    .chip:hover { background: #eff6ff; border-color: var(--primary); color: var(--primary); }
+
+    .risk-banner {
+      padding: 18px 20px;
+      border-radius: 14px;
+      margin-bottom: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .risk-safe { background: var(--safe-bg); color: #14532d; border: 1px solid #86efac; }
+    .risk-warn { background: var(--warn-bg); color: #78350f; border: 1px solid #fcd34d; }
+    .risk-danger { background: var(--danger-bg); color: #7f1d1d; border: 1px solid #fca5a5; }
+    .risk-title { font-size: 1.15rem; font-weight: 800; }
+    .risk-score { font-size: 1.45rem; font-weight: 900; }
+
+    .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+    @media (max-width: 640px) { .metrics-grid { grid-template-columns: 1fr; } }
+    .metric-box { background: #f1f5f9; padding: 14px; border-radius: 12px; text-align: center; }
+    .metric-box .m-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+    .metric-box .m-val { font-size: 1.25rem; font-weight: 800; color: #0f172a; }
+    .metric-box .m-sub { font-size: 0.74rem; color: #475569; margin-top: 2px; }
+
+    .nutri-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: 16px; }
+    .nutri-table th, .nutri-table td { border: 1px solid var(--border); padding: 9px; text-align: center; }
+    .nutri-table th { background: #f8fafc; font-weight: 700; }
+
+    .recommend-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; }
+    .recommend-box h3 { font-size: 1rem; color: #15803d; margin-bottom: 8px; }
+    .recommend-list { list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 0.9rem; }
+    .ethics-note {
+      font-size: 0.82rem;
+      color: var(--muted);
+      background: #f8fafc;
+      border-left: 3px solid #94a3b8;
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-top: 14px;
+    }
+    footer { text-align: center; font-size: 0.8rem; color: var(--muted); margin-top: 24px; padding-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🩸 슈가쉴드 AI (SugarShield AI)</h1>
+      <p>고등학생 식후 식곤증·혈당 스파이크 예방을 위한 AI 간식 인식 및 저당 대체재 추천 서비스</p>
+      <div class="badge-row">
+        <span class="badge">CNN 이미지 분류 (Teachable Machine)</span>
+        <span class="badge">식약처 영양성분 DB 30종 연동</span>
+        <span class="badge">핵심 속성 3종 실시간 분석</span>
+      </div>
+    </header>
+
+    <!-- 1단계: 이미지 업로드 -->
+    <div class="card">
+      <h2>1. 간식 사진 업로드 (AI 자동 범주 판별)</h2>
+      <label class="upload-area" for="image-input">
+        <div>📸 섭취하려는 간식 사진을 선택하거나 드래그하여 올려주세요.</div>
+        <span class="upload-btn">사진 파일 선택하기</span>
+        <input type="file" id="image-input" accept="image/*" />
+      </label>
+
+      <div id="preview-wrapper">
+        <img id="preview-image" src="" alt="업로드된 간식 이미지" />
+        <div id="status-text">AI 모델을 불러오는 중입니다...</div>
+      </div>
+
+      <div class="prob-bar-group" id="prob-container" style="display:none;"></div>
+    </div>
+
+    <!-- 2단계: 음식 검색 및 혈당 스파이크 예측 -->
+    <div class="card">
+      <h2>2. 음식 검색 및 예상 혈당 스파이크 위험도 분석</h2>
+
+      <div class="search-panel">
+        <label for="food-search">🔍 분석할 음식 이름을 검색하거나 아래 태그를 클릭하세요 (100g / 100ml 기준):</label>
+        <div class="search-input-wrap">
+          <input type="text" id="food-search" list="food-datalist" placeholder="예: 소금빵, 마카롱, 떡볶이, 마라탕, 바나나우유, 무가당 요거트..." />
+          <datalist id="food-datalist"></datalist>
+        </div>
+        <div class="chip-list" id="chip-list"></div>
+      </div>
+
+      <div id="risk-banner" class="risk-banner risk-danger">
+        <div>
+          <div style="font-size:0.82rem; font-weight:600; opacity:0.85;" id="selected-food-label">선택된 음식: 소금빵 (빵 스낵류)</div>
+          <div class="risk-title" id="risk-grade-text">-</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:0.82rem; font-weight:600; opacity:0.85;">속성 ③ 혈당 스파이크 위험 지수</div>
+          <div class="risk-score" id="risk-score-text">-</div>
+        </div>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-box">
+          <div class="m-title">속성 ① 당류 열량 비율</div>
+          <div class="m-val" id="attr1-val">-</div>
+          <div class="m-sub">(당류×4) ÷ 에너지 × 100</div>
+        </div>
+        <div class="metric-box">
+          <div class="m-title">속성 ② 탄수화물 내 당류비</div>
+          <div class="m-val" id="attr2-val">-</div>
+          <div class="m-sub">당류 ÷ 탄수화물 × 100</div>
+        </div>
+        <div class="metric-box">
+          <div class="m-title">속성 ③ 스파이크 위험 지수</div>
+          <div class="m-val" id="attr3-val">-</div>
+          <div class="m-sub">(당류×1.5)+(탄수×0.5)-(단·지×0.3)</div>
+        </div>
+      </div>
+
+      <table class="nutri-table">
+        <thead>
+          <tr>
+            <th>에너지 (kcal)</th>
+            <th>탄수화물 (g)</th>
+            <th>당류 (g)</th>
+            <th>단백질 (g)</th>
+            <th>지방 (g)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td id="td-kcal">-</td>
+            <td id="td-carb">-</td>
+            <td id="td-sugar">-</td>
+            <td id="td-prot">-</td>
+            <td id="td-fat">-</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="recommend-box">
+        <h3 id="recommend-title">💡 AI 맞춤형 저당 대체 간식 및 섭취 가이드</h3>
+        <ul class="recommend-list" id="recommend-list"></ul>
+      </div>
+
+      <div class="ethics-note">
+        <strong>⚠️ AI 윤리 및 건강 주의 안내:</strong> 본 서비스의 혈당 변동 지수는 식품의약품안전처 가공식품 표준데이터(100g/100ml 기준)를 바탕으로 산출된 참고 지표이며, 개인의 체질·활동량·기저질환에 따라 실제 혈당 반응은 다를 수 있습니다. 과도한 당류 제한으로 인한 영양 불균형이나 섭식 스트레스를 지양하고 균형 잡힌 식습관을 권장합니다.
+      </div>
+    </div>
+
+    <footer>
+      2026학년도 2학기 인공지능 기초 수행평가 | CNN 전이학습(Teachable Machine) & 공공데이터 융합 프로젝트
+    </footer>
+  </div>
+
+  <script>
+    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/4tgiRzzm0/";
+
+    // 소논문 15종 + 고등학생 다빈도 섭취 간식·음료 15종 확장 DB (100g/100ml 기준)
+    const FOODS = [
+      // 빵 스낵류
+      { name: "소금빵", category: "빵 스낵류", kcal: 365, carb: 46.0, sugar: 7.5, prot: 8.2, fat: 16.5 },
+      { name: "크루아상", category: "빵 스낵류", kcal: 406, carb: 45.8, sugar: 11.3, prot: 8.2, fat: 21.0 },
+      { name: "초코칩 스콘", category: "빵 스낵류", kcal: 457, carb: 67.0, sugar: 22.0, prot: 7.0, fat: 18.0 },
+      { name: "오트밀 레이즌 스콘", category: "빵 스낵류", kcal: 449, carb: 66.0, sugar: 21.0, prot: 6.0, fat: 18.0 },
+      { name: "쑥고물 스콘", category: "빵 스낵류", kcal: 443, carb: 64.0, sugar: 19.0, prot: 7.0, fat: 18.0 },
+      { name: "김 스콘", category: "빵 스낵류", kcal: 453, carb: 65.0, sugar: 14.0, prot: 7.0, fat: 19.0 },
+      { name: "우유 식빵", category: "빵 스낵류", kcal: 295, carb: 51.0, sugar: 8.0, prot: 9.0, fat: 6.0 },
+      { name: "국물떡볶이", category: "빵 스낵류", kcal: 202, carb: 45.8, sugar: 5.5, prot: 5.5, fat: 0.3 },
+      { name: "로제떡볶이", category: "빵 스낵류", kcal: 245, carb: 42.0, sugar: 8.2, prot: 6.5, fat: 5.8 },
+      { name: "감자칩 스낵", category: "빵 스낵류", kcal: 545, carb: 55.0, sugar: 3.5, prot: 6.0, fat: 33.5 },
+
+      // 유가공품류 & 음료
+      { name: "일반 흰우유", category: "유가공품류", kcal: 66, carb: 5.3, sugar: 4.0, prot: 3.5, fat: 3.4 },
+      { name: "무가당 요거트", category: "유가공품류", kcal: 69, carb: 4.0, sugar: 3.0, prot: 3.0, fat: 4.5 },
+      { name: "플레인 그릭요거트", category: "유가공품류", kcal: 106, carb: 9.3, sugar: 5.1, prot: 5.1, fat: 5.3 },
+      { name: "스트링치즈", category: "유가공품류", kcal: 281, carb: 3.9, sugar: 0.2, prot: 22.5, fat: 19.5 },
+      { name: "가당 요거트", category: "유가공품류", kcal: 80, carb: 9.5, sugar: 7.9, prot: 3.2, fat: 3.3 },
+      { name: "바나나맛 우유", category: "유가공품류", kcal: 88, carb: 13.5, sugar: 12.8, prot: 2.8, fat: 2.5 },
+      { name: "초코 우유", category: "유가공품류", kcal: 92, carb: 14.2, sugar: 13.0, prot: 3.0, fat: 2.6 },
+      { name: "무가당 두유", category: "유가공품류", kcal: 45, carb: 1.8, sugar: 0.8, prot: 4.2, fat: 2.3 },
+      { name: "흑당 버블티", category: "유가공품류", kcal: 115, carb: 21.0, sugar: 16.5, prot: 1.5, fat: 2.8 },
+      { name: "아이스 아메리카노", category: "유가공품류", kcal: 4, carb: 0.8, sugar: 0.0, prot: 0.2, fat: 0.0 },
+
+      // 디저트류
+      { name: "필링 마카롱", category: "디저트류", kcal: 436, carb: 70.0, sugar: 51.0, prot: 7.0, fat: 16.0 },
+      { name: "마카롱 꼬끄", category: "디저트류", kcal: 395, carb: 73.3, sugar: 50.0, prot: 6.7, fat: 6.7 },
+      { name: "마시멜로 케이크", category: "디저트류", kcal: 275, carb: 43.0, sugar: 30.0, prot: 6.0, fat: 9.0 },
+      { name: "초코 케이크", category: "디저트류", kcal: 329, carb: 35.6, sugar: 19.5, prot: 5.4, fat: 18.4 },
+      { name: "당근 케이크", category: "디저트류", kcal: 383, carb: 31.0, sugar: 16.0, prot: 4.0, fat: 27.0 },
+      { name: "생크림 케이크", category: "디저트류", kcal: 340, carb: 34.0, sugar: 21.0, prot: 4.5, fat: 20.5 },
+      { name: "딸기 탕후루", category: "디저트류", kcal: 265, carb: 64.0, sugar: 58.0, prot: 0.8, fat: 0.3 },
+      { name: "초코칩 쿠키", category: "디저트류", kcal: 488, carb: 64.5, sugar: 34.0, prot: 5.5, fat: 23.0 },
+      { name: "와플", category: "디저트류", kcal: 355, carb: 52.0, sugar: 22.0, prot: 6.2, fat: 13.5 },
+      { name: "바닐라 아이스크림", category: "디저트류", kcal: 207, carb: 24.0, sugar: 21.2, prot: 3.5, fat: 11.0 }
+    ];
+
+    let model = null;
+    async function loadModel() {
+      try {
+        model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+      } catch (e) { console.error(e); }
+    }
+    loadModel();
+
+    const datalist = document.getElementById("food-datalist");
+    const chipList = document.getElementById("chip-list");
+    const searchInput = document.getElementById("food-search");
+
+    FOODS.forEach(f => {
+      const opt = document.createElement("option");
+      opt.value = f.name;
+      datalist.appendChild(opt);
+    });
+
+    // 자주 찾는 대표 간식 퀵 버튼
+    const quickNames = ["소금빵", "초코칩 스콘", "국물떡볶이", "필링 마카롱", "초코 케이크", "바나나맛 우유", "무가당 요거트", "플레인 그릭요거트", "일반 흰우유", "스트링치즈"];
+    quickNames.forEach(name => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip";
+      btn.textContent = name;
+      btn.onclick = () => {
+        searchInput.value = name;
+        const found = FOODS.find(item => item.name === name);
+        if (found) renderFoodResult(found);
+      };
+      chipList.appendChild(btn);
+    });
+
+    searchInput.addEventListener("input", () => {
+      const q = searchInput.value.trim();
+      const exact = FOODS.find(f => f.name === q);
+      if (exact) {
+        renderFoodResult(exact);
+        return;
+      }
+      const partial = FOODS.find(f => f.name.includes(q));
+      if (partial && q.length >= 2) {
+        renderFoodResult(partial);
+      }
+    });
+
+    // 이미지 업로드 시 AI 범주 판별 및 해당 범주 대표 음식 자동 연결
+    const imageInput = document.getElementById("image-input");
+    const previewWrapper = document.getElementById("preview-wrapper");
+    const previewImage = document.getElementById("preview-image");
+    const statusText = document.getElementById("status-text");
+    const probContainer = document.getElementById("prob-container");
+
+    imageInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        previewImage.src = e.target.result;
+        previewWrapper.style.display = "block";
+        statusText.textContent = "🤖 딥러닝(CNN) 모델이 간식 범주를 분석 중입니다...";
+
+        previewImage.onload = async () => {
+          if (!model) {
+            model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+          }
+          const predictions = await model.predict(previewImage);
+          predictions.sort((a, b) => b.probability - a.probability);
+
+          probContainer.style.display = "flex";
+          probContainer.innerHTML = "";
+          predictions.forEach((p) => {
+            const pct = (p.probability * 100).toFixed(1);
+            const row = document.createElement("div");
+            row.className = "prob-item";
+            row.innerHTML = `
+              <div class="prob-label">${p.className}</div>
+              <div class="prob-track"><div class="prob-fill" style="width:${pct}%"></div></div>
+              <div class="prob-val">${pct}%</div>
+            `;
+            probContainer.appendChild(row);
+          });
+
+          const topClass = predictions[0].className.trim();
+          const confidence = (predictions[0].probability * 100).toFixed(1);
+          statusText.innerHTML = `✅ AI 판별 범주: <strong>${topClass}</strong> (${confidence}%) — 아래 검색창에서 정확한 음식 이름을 선택/검색해 보세요!`;
+
+          const defaultFood = FOODS.find(f => f.category === topClass) || FOODS[0];
+          searchInput.value = defaultFood.name;
+          renderFoodResult(defaultFood);
+        };
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function renderFoodResult(item) {
+      const attr1 = ((item.sugar * 4) / item.kcal) * 100;
+      const attr2 = item.carb > 0 ? (item.sugar / item.carb) * 100 : 0;
+      const attr3 = (item.sugar * 1.5) + (item.carb * 0.5) - ((item.prot + item.fat) * 0.3);
+
+      document.getElementById("selected-food-label").textContent = `선택된 음식: ${item.name} (${item.category} · 100g/100ml 기준)`;
+      document.getElementById("attr1-val").textContent = `${attr1.toFixed(1)}%`;
+      document.getElementById("attr2-val").textContent = `${attr2.toFixed(1)}%`;
+      document.getElementById("attr3-val").textContent = `${attr3.toFixed(1)}점`;
+
+      document.getElementById("td-kcal").textContent = `${item.kcal} kcal`;
+      document.getElementById("td-carb").textContent = `${item.carb} g`;
+      document.getElementById("td-sugar").textContent = `${item.sugar} g`;
+      document.getElementById("td-prot").textContent = `${item.prot} g`;
+      document.getElementById("td-fat").textContent = `${item.fat} g`;
+
+      const banner = document.getElementById("risk-banner");
+      const gradeText = document.getElementById("risk-grade-text");
+      const scoreText = document.getElementById("risk-score-text");
+      const recTitle = document.getElementById("recommend-title");
+      const recList = document.getElementById("recommend-list");
+
+      banner.className = "risk-banner";
+      scoreText.textContent = `${attr3.toFixed(1)}점`;
+
+      if (attr3 >= 45) {
+        banner.classList.add("risk-danger");
+        gradeText.textContent = "🚨 위험 (고위험군 - 혈당 스파이크 주의)";
+        recTitle.textContent = `💡 '${item.name}' 대체 추천: 위험 지수가 높습니다! 아래 안전 등급 간식으로 바꿔보세요.`;
+        recList.innerHTML = `
+          <li>🥛 <strong>무가당 요거트 (위험 지수 4.2점 / 안전)</strong>: 당류 3.0g으로 식후 혈당 급상승을 막아줍니다.</li>
+          <li>🥣 <strong>플레인 그릭요거트 (위험 지수 9.2점 / 안전)</strong>: 단백질 함량이 높아 식곤증과 집중력 저하를 예방합니다.</li>
+          <li>🧀 <strong>스트링치즈 (위험 지수 -10.3점 / 안전)</strong>: 당류 0.2g, 고단백·고지방으로 탄수화물 흡수 속도를 늦춰줍니다.</li>
+        `;
+      } else if (attr3 >= 20) {
+        banner.classList.add("risk-warn");
+        gradeText.textContent = "⚠️ 주의 (중위험군 - 단독 섭취 주의)";
+        recTitle.textContent = `💡 '${item.name}' 섭취 가이드: 혈당이 빠르게 오를 수 있으므로 단백질·지방과 함께 드세요.`;
+        recList.innerHTML = `
+          <li>🥛 <strong>일반 흰우유 (위험 지수 6.6점 / 안전) 또는 무가당 두유 (위험 지수 0.0점 / 안전)</strong>와 함께 섭취하면 혈당 상승 속도를 완충할 수 있습니다.</li>
+          <li>🥣 간식 양을 절반으로 줄이고 <strong>플레인 그릭요거트</strong>를 곁들이는 것을 추천합니다.</li>
+        `;
+      } else {
+        banner.classList.add("risk-safe");
+        gradeText.textContent = "✅ 안전 (저위험군 - 혈당 안정 간식)";
+        recTitle.textContent = `🎉 좋은 선택입니다! '${item.name}'은(는) 혈당 스파이크 위험이 낮은 안전 등급 간식입니다.`;
+        recList.innerHTML = `
+          <li>👍 <strong>당류 함량이 낮고 영양 균형이 우수</strong>하여 방과 후나 야간 자율학습 전후 간식으로 적합합니다.</li>
+          <li>💧 가당 시럽이나 설탕 토핑을 추가하지 않고 섭취하면 안정적인 혈당과 집중력을 유지할 수 있습니다.</li>
+        `;
+      }
+    }
+
+    // 초기 화면 기본 표시: 소금빵
+    searchInput.value = "소금빵";
+    renderFoodResult(FOODS[0]);
+  </script>
+</body>
+</html>
